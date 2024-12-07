@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "goit-pythonweb-hw-08"
+version = "0.1.0"
+description = ""
+authors = ["LesyaTkachuk <lesyalesya9876@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "3.13"
+asyncpg = "^0.30.0"
+alembic = "^1.14.0"
+greenlet = "^3.1.1"
+pydantic = "^2.10.1"
+fastapi = "^0.115.5"
+uvicorn = "^0.32.1"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+sqlalchemy = "^2.0.36"
+libgravatar = "^1.0.4"
+python-multipart = "^0.0.19"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
