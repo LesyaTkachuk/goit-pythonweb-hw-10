@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, UTC
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import Depends, HTTPException, status
 from passlib.context import CryptContext
@@ -27,17 +27,38 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 # define a function to generate a new access token
-async def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+async def create_token(
+    data: dict, token_type: Literal["access", "refresh"], expires_delta: timedelta
+):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(UTC) + timedelta(seconds=expires_delta)
-    else:
-        expire = datetime.now(UTC) + timedelta(seconds=config.JWT_EXPIRATION_SECONDS)
-    to_encode.update({"exp": expire})
+    now = datetime.now(UTC)
+    expire = now + timedelta(seconds=expires_delta)
+
+    to_encode.update({"exp": expire, "iat": now, "token_type": token_type})
     encoded_jwt = jwt.encode(
         to_encode, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM
     )
     return encoded_jwt
+
+
+# define a function to create a new access token
+async def create_access_token(data: dict, expires_delta: Optional[float] = None):
+    if expires_delta:
+        access_token = await create_token(data, "access", expires_delta)
+    else:
+        access_token = await create_token(data, "access", config.JWT_EXPIRATION_SECONDS)
+    return access_token
+
+
+# define a function to create a new refresh token
+async def create_refresh_token(data: dict, expires_delta: Optional[float] = None):
+    if expires_delta:
+        refresh_token = await create_token(data, "refresh", expires_delta)
+    else:
+        refresh_token = await create_token(
+            data, "refresh", config.JWT_REFRESH_EXPIRATION_SECONDS
+        )
+    return refresh_token
 
 
 async def get_current_user(
@@ -55,7 +76,8 @@ async def get_current_user(
             token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM]
         )
         username = payload.get("sub")
-        if username is None:
+        token_type = payload.get("token_type")
+        if username is None or token_type != "access":
             raise credentials_exception
     except JWTError as e:
         raise credentials_exception
@@ -65,3 +87,24 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+async def verify_refresh_token(refresh_token: str, db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=messages.UNVERIFIED_CREDENTIALS,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            refresh_token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM]
+        )
+        username = payload.get("sub")
+        token_type = payload.get("token_type")
+        if username is None or token_type != "refresh":
+            raise credentials_exception
+        user = await UserService(db).get_user_by_username(username, refresh_token)
+        return user
+    except JWTError as e:
+        raise credentials_exception
