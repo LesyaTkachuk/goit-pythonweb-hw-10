@@ -18,6 +18,7 @@ passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 sqlalchemy = "^2.0.36"
 libgravatar = "^1.0.4"
 python-multipart = "^0.0.19"
+slowapi = "^0.1.9"
 
 
 [tool.poetry.group.dev.dependencies]
