@@ -43,13 +43,13 @@ create database contacts_app;
 \q
 ```
 
-3. To run the initial migration:
+3. Skip this step. To run the initial migration:
 
 ```
 alembic revision --autogenerate -m 'Init'
 ```
 
-4. To apply initial migration to database and create tables from appointed models:
+4. To apply all migration to database and create tables from appointed models:
 
 ```
 alembic upgrade head
