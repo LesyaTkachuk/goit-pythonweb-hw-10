@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordRequestForm
-from src.schemas import TokenRefreshRequest, UserCreate, Token, UserBase
+from src.services.email import send_email
+from src.schemas import TokenRefreshRequest, UserCreate, Token, UserBase, RequestEmail
 from src.services.auth import (
     create_access_token,
     Hash,
     create_refresh_token,
+    get_email_from_token,
     verify_refresh_token,
 )
 from src.services.users import UserService
@@ -16,7 +18,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserBase, status_code=status.HTTP_201_CREATED)
-async def register(body: UserCreate, db: Session = Depends(get_db)):
+async def register(
+    body: UserCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     user_service = UserService(db)
 
     email_user = await user_service.get_user_by_email(body.email)
@@ -34,13 +41,18 @@ async def register(body: UserCreate, db: Session = Depends(get_db)):
         )
 
     body.password = Hash().get_password_hash(body.password)
-    return await user_service.create_user(body)
+    new_user = await user_service.create_user(body)
+
+    background_tasks.add_task(
+        send_email, new_user.email, new_user.username, request.base_url
+    )
+    return new_user
 
 
 # login
 @router.post("/login", response_model=Token)
 async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
     user_service = UserService(db)
     user = await user_service.get_user_by_username(form_data.username)
@@ -50,6 +62,12 @@ async def login_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=messages.INVALID_CREDENTIALS,
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=messages.USER_NOT_CONFIRMED,
         )
 
     # generate JWT
@@ -66,7 +84,7 @@ async def login_user(
 
 
 @router.post("/refresh-token", response_model=Token)
-async def new_token(request: TokenRefreshRequest, db: Session = Depends(get_db)):
+async def new_token(request: TokenRefreshRequest, db: AsyncSession = Depends(get_db)):
 
     user = await verify_refresh_token(request.refresh_token, db)
 
@@ -86,3 +104,42 @@ async def new_token(request: TokenRefreshRequest, db: Session = Depends(get_db))
         "refresh_token": new_refresh_token,
         "token_type": "bearer",
     }
+
+
+# confirm email
+@router.get("/confirm-email/{token}")
+async def confirm_email(token: str, db: AsyncSession = Depends(get_db)):
+    email = await get_email_from_token(token)
+    user_service = UserService(db)
+    user = await user_service.get_user_by_email(email)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=messages.USER_NOT_FOUND,
+        )
+    if user.confirmed:
+        return {"message": messages.USER_ALREADY_CONFIRMED}
+    await user_service.confirmed_email(email)
+    return {"message": messages.USER_CONFIRMED}
+
+
+@router.post("/request_email")
+async def request_email(
+    body: RequestEmail,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    user_service = UserService(db)
+    user = await user_service.get_user_by_email(body.email)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=messages.USER_NOT_FOUND,
+        )
+
+    if user.confirmed:
+        return {"message": messages.USER_ALREADY_CONFIRMED}
+
+    background_tasks.add_task(send_email, user.email, user.username, request.base_url)
+    return {"message": messages.EMAIL_SENT}

@@ -22,6 +22,9 @@ class User(Base):
         "created_at", DateTime, default=func.now()
     )
     avatar: Mapped[str] = mapped_column(String(200), nullable=True)
+    confirmed: Mapped[bool] = mapped_column(
+        "confirmed", Boolean, default=False, nullable=True
+    )
     contacts: Mapped[list["Contact"]] = relationship("Contact", back_populates="user")
     groups: Mapped[list["Group"]] = relationship("Group", back_populates="user")
 

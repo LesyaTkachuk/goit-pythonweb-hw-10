@@ -19,6 +19,9 @@ sqlalchemy = "^2.0.36"
 libgravatar = "^1.0.4"
 python-multipart = "^0.0.19"
 slowapi = "^0.1.9"
+pydantic-settings = "^2.6.1"
+fastapi-mail = "^1.4.2"
+cloudinary = "^1.41.0"
 
 
 [tool.poetry.group.dev.dependencies]
